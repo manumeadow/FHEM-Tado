@@ -123,12 +123,14 @@ my %dpoints = (
     },
     getAirComfort => {
         url      => 'homes/#HomeID#/airComfort',
+        attribute => 'generateAirComfort',
     },
     setPresenceStatus => {
         url      => 'homes/#HomeID#/presenceLock',
     },
     getPresenceStatus => {
         url      => 'homes/#HomeID#/state',
+        attribute => 'generatePresence',
     },
 );
 
@@ -156,6 +158,8 @@ sub Initialize
 	'generateDevices:yes,no '
 	. 'generateMobileDevices:yes,no '
 	. 'generateWeather:yes,no '
+	. 'generateAirComfort:yes,no '
+	. 'generatePresence:yes,no '
 	. $readingFnAttributes;
 
 	Log 3, "Tado module initialized.";
@@ -834,6 +838,14 @@ sub ResponseHandling
     Log3 $name, 4, "Callback received. " . $param->{url};
 	Log3 $name, 4, "FHEM -> Tado: " . $param->{message} if (defined $param->{message});
 	Log3 $name, 4, "Tado -> FHEM: " . $data;
+
+	# Tado API rate limit (since January 2026): header "ratelimit: \"perday\";r=<remaining>" shows the
+	# requests left for the current day. Updated on every response so the reading always reflects the
+	# latest known value.
+	if (defined $param->{httpheader} && $param->{httpheader} =~ /^ratelimit:\s*"(\w+)";r=(\d+)/mi) {
+		readingsSingleUpdate($hash, "apiRateLimitScope", $1, 1);
+		readingsSingleUpdate($hash, "apiRateLimitRemaining", $2, 1);
+	}
 
 	#function call error
 	if ( $err ne "" ) {
@@ -1617,6 +1629,8 @@ sub Decrypt($)
             <li><i>generateDevices</i>: yes/no — Create Tado hardware devices. Default: no.</li>
             <li><i>generateMobileDevices</i>: yes/no — Create mobile devices for presence detection. Default: no.</li>
             <li><i>generateWeather</i>: yes/no — Create weather device. Default: no.</li>
+            <li><i>generateAirComfort</i>: yes/no — Request air comfort updates. Default: yes.</li>
+            <li><i>generatePresence</i>: yes/no — Request presence status updates. Default: yes.</li>
         </ul>
     </ul>
 
@@ -1641,6 +1655,8 @@ sub Decrypt($)
         <li><b>Zone_&lt;zoneid&gt;_Name</b>: Name of each zone.</li>
         <li><b>airComfort_freshness</b>: Overall air freshness indicator for the home.</li>
         <li><b>airComfort_lastWindowOpen</b>: Timestamp of the last open window detection.</li>
+        <li><b>apiRateLimitRemaining</b>: Number of Tado cloud API requests left for the current day, as reported by the last response.</li>
+        <li><b>apiRateLimitScope</b>: Scope of the rate limit reported by the Tado cloud API (e.g. <code>perday</code>).</li>
         <li><b>last_error</b>: Last error message and timestamp.</li>
         <li><b>state</b>: Current internal state of the module.
             <br>The following states are possible:
